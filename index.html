@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SyncBoard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0f;
+      --surface: #141417;
+      --card: #1a1a1f;
+      --border: #2a2a35;
+      --accent: #c8ff57;
+      --accent2: #57d4ff;
+      --text: #f0f0f5;
+      --muted: #666680;
+      --danger: #ff5757;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(200,255,87,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200,255,87,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── CONFIG MODAL ── */
+    #config-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(6px);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    #config-overlay.hidden { display: none; }
+
+    .config-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 36px;
+      width: 100%; max-width: 480px;
+      position: relative;
+    }
+    .config-box h2 {
+      font-size: 1.8rem; font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .config-box h2 span { color: var(--accent); }
+    .config-box p { color: var(--muted); font-size: 0.9rem; margin-bottom: 28px; line-height: 1.5; }
+    .config-box label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+    .config-box input {
+      width: 100%; background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+      color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.85rem;
+      outline: none; margin-bottom: 16px; transition: border-color .2s;
+    }
+    .config-box input:focus { border-color: var(--accent); }
+    .config-box .hint {
+      font-size: 0.78rem; color: var(--muted);
+      background: rgba(200,255,87,0.06);
+      border: 1px solid rgba(200,255,87,0.15);
+      border-radius: 8px; padding: 10px 14px;
+      margin-bottom: 20px; line-height: 1.6;
+    }
+    .config-box .hint a { color: var(--accent); text-decoration: none; }
+    .btn-save {
+      width: 100%; padding: 14px;
+      background: var(--accent); color: #000;
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem;
+      border: none; border-radius: 10px; cursor: pointer;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn-save:hover { opacity: 0.88; }
+    .btn-save:active { transform: scale(0.98); }
+
+    /* ── HEADER ── */
+    header {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; }
+    .logo span { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: background .4s;
+    }
+    .status-dot.ok { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .status-dot.err { background: var(--danger); }
+    #status-text { font-size: 0.8rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .btn-icon {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 14px;
+      color: var(--muted); font-size: 0.8rem; font-family: 'Syne', sans-serif;
+      cursor: pointer; transition: color .2s, border-color .2s;
+    }
+    .btn-icon:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── MAIN ── */
+    main {
+      position: relative; z-index: 1;
+      max-width: 960px; margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .page-title {
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      font-weight: 800; letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }
+    .page-title span { color: var(--accent); }
+    .page-sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 36px; }
+
+    /* ── ADD FORM ── */
+    .add-form {
+      display: flex; gap: 10px; margin-bottom: 32px; flex-wrap: wrap;
+    }
+    .add-form input {
+      flex: 1; min-width: 200px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 18px;
+      color: var(--text); font-family: 'Syne', sans-serif; font-size: 0.95rem;
+      outline: none; transition: border-color .2s;
+    }
+    .add-form input:focus { border-color: var(--accent); }
+    .add-form input::placeholder { color: var(--muted); }
+    .tag-select {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 14px;
+      color: var(--text); font-family: 'Syne', sans-serif; font-size: 0.9rem;
+      outline: none; cursor: pointer;
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666680' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+      padding-right: 30px;
+    }
+    .btn-add {
+      background: var(--accent); color: #000;
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem;
+      border: none; border-radius: 10px; padding: 13px 24px;
+      cursor: pointer; white-space: nowrap;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn-add:hover { opacity: 0.88; }
+    .btn-add:active { transform: scale(0.97); }
+
+    /* ── FILTER TABS ── */
+    .filter-row {
+      display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap;
+    }
+    .filter-btn {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 16px;
+      color: var(--muted); font-family: 'Syne', sans-serif; font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; transition: all .2s;
+    }
+    .filter-btn.active, .filter-btn:hover {
+      border-color: var(--accent); color: var(--accent);
+      background: rgba(200,255,87,0.07);
+    }
+
+    /* ── ITEMS GRID ── */
+    #items-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+
+    .item-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex; flex-direction: column; gap: 10px;
+      transition: border-color .2s, transform .15s;
+      animation: fadeIn .25s ease;
+      cursor: default;
+    }
+    .item-card:hover { border-color: var(--border); transform: translateY(-2px); }
+    .item-card.done { opacity: 0.5; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-top { display: flex; align-items: flex-start; gap: 12px; }
+    .card-check {
+      width: 20px; height: 20px; border-radius: 6px;
+      border: 2px solid var(--border);
+      background: transparent; flex-shrink: 0;
+      cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 1px;
+    }
+    .card-check.checked {
+      background: var(--accent); border-color: var(--accent);
+    }
+    .card-check.checked::after {
+      content: '✓'; font-size: 0.7rem; color: #000; font-weight: 800;
+    }
+    .card-text { flex: 1; font-size: 0.95rem; line-height: 1.5; word-break: break-word; }
+    .item-card.done .card-text { text-decoration: line-through; color: var(--muted); }
+
+    .card-bottom { display: flex; align-items: center; justify-content: space-between; }
+    .tag-badge {
+      font-size: 0.72rem; font-weight: 600;
+      padding: 3px 10px; border-radius: 20px;
+      font-family: 'DM Mono', monospace;
+    }
+    .tag-task { background: rgba(87,212,255,0.12); color: var(--accent2); }
+    .tag-note { background: rgba(200,255,87,0.12); color: var(--accent); }
+    .tag-idea { background: rgba(255,87,200,0.12); color: #ff57c8; }
+    .tag-link { background: rgba(255,200,87,0.12); color: #ffc857; }
+
+    .card-meta { font-size: 0.72rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+    .btn-del {
+      background: none; border: none;
+      color: var(--muted); cursor: pointer; font-size: 1rem;
+      padding: 4px; border-radius: 6px;
+      transition: color .2s, background .2s;
+      line-height: 1;
+    }
+    .btn-del:hover { color: var(--danger); background: rgba(255,87,87,0.1); }
+
+    /* ── EMPTY STATE ── */
+    .empty-state {
+      grid-column: 1/-1;
+      text-align: center; padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+    .empty-state p { font-size: 1rem; }
+
+    /* ── SYNC BAR ── */
+    #sync-bar {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px 20px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.85rem; color: var(--muted);
+      opacity: 0; transition: opacity .3s;
+      pointer-events: none; z-index: 50;
+      white-space: nowrap;
+    }
+    #sync-bar.show { opacity: 1; }
+    #sync-bar.saving { color: var(--accent2); border-color: var(--accent2); }
+    #sync-bar.saved { color: var(--accent); border-color: var(--accent); }
+    #sync-bar.error { color: var(--danger); border-color: var(--danger); }
+    .spin { display: inline-block; animation: spin .6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; top: 24px; right: 24px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 18px;
+      font-size: 0.85rem; color: var(--text);
+      opacity: 0; transition: opacity .3s; z-index: 200;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      header { padding: 16px 18px; }
+      main { padding: 28px 16px 80px; }
+      .add-form { flex-direction: column; }
+      .add-form input, .btn-add, .tag-select { width: 100%; }
+      #items-container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- CONFIG MODAL -->
+<div id="config-overlay">
+  <div class="config-box">
+    <h2>Connect to <span>GitHub</span></h2>
+    <p>This app syncs data to a JSON file in your GitHub repo — free forever. No backend needed.</p>
+
+    <div class="hint">
+      <strong>Setup steps:</strong><br>
+      1. Create a GitHub repo (can be private)<br>
+      2. Go to <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a> → Generate new token (classic)<br>
+      3. Tick <strong>repo</strong> scope → copy the token<br>
+      4. Enable GitHub Pages on your repo (Settings → Pages → main branch → /root)
+    </div>
+
+    <label>GitHub Username</label>
+    <input id="cfg-user" placeholder="yourusername" autocomplete="off" />
+
+    <label>Repository Name</label>
+    <input id="cfg-repo" placeholder="my-syncboard" autocomplete="off" />
+
+    <label>GitHub Personal Access Token</label>
+    <input id="cfg-token" type="password" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" />
+
+    <label>JSON filename (in repo root)</label>
+    <input id="cfg-file" placeholder="data.json" value="data.json" autocomplete="off" />
+
+    <button class="btn-save" onclick="saveConfig()">Save & Connect →</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">Sync<span>Board</span></div>
+  <div class="header-right">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">not connected</span>
+    <button class="btn-icon" onclick="showConfig()">⚙ Settings</button>
+    <button class="btn-icon" onclick="loadData()">↻ Sync</button>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main>
+  <h1 class="page-title">Your <span>Data</span></h1>
+  <p class="page-sub" id="last-sync">Connect to GitHub to start syncing.</p>
+
+  <div class="add-form">
+    <input id="new-text" placeholder="Add a task, note, idea, or link…" onkeydown="if(event.key==='Enter')addItem()" />
+    <select class="tag-select" id="new-tag">
+      <option value="task">Task</option>
+      <option value="note">Note</option>
+      <option value="idea">Idea</option>
+      <option value="link">Link</option>
+    </select>
+    <button class="btn-add" onclick="addItem()">+ Add</button>
+  </div>
+
+  <div class="filter-row">
+    <button class="filter-btn active" data-filter="all" onclick="setFilter(this,'all')">All</button>
+    <button class="filter-btn" data-filter="task" onclick="setFilter(this,'task')">Tasks</button>
+    <button class="filter-btn" data-filter="note" onclick="setFilter(this,'note')">Notes</button>
+    <button class="filter-btn" data-filter="idea" onclick="setFilter(this,'idea')">Ideas</button>
+    <button class="filter-btn" data-filter="link" onclick="setFilter(this,'link')">Links</button>
+    <button class="filter-btn" data-filter="done" onclick="setFilter(this,'done')">Done</button>
+  </div>
+
+  <div id="items-container"></div>
+</main>
+
+<!-- SYNC BAR -->
+<div id="sync-bar"><span id="sync-icon">●</span> <span id="sync-msg">idle</span></div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── STATE ──
+let CFG = {};
+let items = [];
+let fileSHA = null;
+let currentFilter = 'all';
+let syncTimer = null;
+
+// ── CONFIG ──
+function saveConfig() {
+  const u = document.getElementById('cfg-user').value.trim();
+  const r = document.getElementById('cfg-repo').value.trim();
+  const t = document.getElementById('cfg-token').value.trim();
+  const f = document.getElementById('cfg-file').value.trim() || 'data.json';
+  if (!u || !r || !t) { toast('Fill all required fields'); return; }
+  CFG = { user: u, repo: r, token: t, file: f };
+  localStorage.setItem('syncboard_cfg', JSON.stringify(CFG));
+  document.getElementById('config-overlay').classList.add('hidden');
+  loadData();
+}
+
+function showConfig() {
+  const o = document.getElementById('config-overlay');
+  o.classList.remove('hidden');
+  if (CFG.user) {
+    document.getElementById('cfg-user').value = CFG.user;
+    document.getElementById('cfg-repo').value = CFG.repo;
+    document.getElementById('cfg-token').value = CFG.token;
+    document.getElementById('cfg-file').value = CFG.file;
+  }
+}
+
+function loadConfig() {
+  const saved = localStorage.getItem('syncboard_cfg');
+  if (saved) {
+    try { CFG = JSON.parse(saved); } catch(e) {}
+  }
+  if (CFG.user) {
+    document.getElementById('config-overlay').classList.add('hidden');
+  }
+}
+
+// ── GITHUB API ──
+async function apiHeaders() {
+  return {
+    'Authorization': `token ${CFG.token}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json'
+  };
+}
+
+async function loadData() {
+  if (!CFG.user) return;
+  setSyncBar('saving', '⟳', 'Loading…');
+  try {
+    const url = `https://api.github.com/repos/${CFG.user}/${CFG.repo}/contents/${CFG.file}`;
+    const res = await fetch(url, { headers: await apiHeaders() });
+
+    if (res.status === 404) {
+      // File doesn't exist yet — start fresh
+      items = [];
+      fileSHA = null;
+      render();
+      setStatus('ok', 'connected (new file)');
+      setSyncBar('saved', '✓', 'Ready — file will be created on first save');
+      hideSyncBarSoon();
+      return;
+    }
+
+    if (!res.ok) throw new Error(`GitHub ${res.status}`);
+    const data = await res.json();
+    fileSHA = data.sha;
+    const decoded = atob(data.content.replace(/\n/g, ''));
+    const parsed = JSON.parse(decoded);
+    items = Array.isArray(parsed.items) ? parsed.items : [];
+    render();
+    setStatus('ok', 'synced');
+    setSyncBar('saved', '✓', `Loaded ${items.length} item${items.length!==1?'s':''}`);
+    document.getElementById('last-sync').textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+    hideSyncBarSoon();
+  } catch(e) {
+    setStatus('err', 'error');
+    setSyncBar('error', '✗', e.message);
+    hideSyncBarSoon(4000);
+  }
+}
+
+async function saveData() {
+  if (!CFG.user) { toast('Not connected to GitHub'); return; }
+  setSyncBar('saving', '<span class="spin">↻</span>', 'Saving to GitHub…');
+  try {
+    const url = `https://api.github.com/repos/${CFG.user}/${CFG.repo}/contents/${CFG.file}`;
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify({ items }, null, 2))));
+    const body = {
+      message: `SyncBoard update ${new Date().toISOString()}`,
+      content,
+      ...(fileSHA ? { sha: fileSHA } : {})
+    };
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: await apiHeaders(),
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || `GitHub ${res.status}`);
+    }
+    const data = await res.json();
+    fileSHA = data.content.sha;
+    setStatus('ok', 'saved');
+    setSyncBar('saved', '✓', 'Saved to GitHub');
+    document.getElementById('last-sync').textContent = `Last synced: ${new Date().toLocaleTimeString()}`;
+    hideSyncBarSoon();
+  } catch(e) {
+    setStatus('err', 'save failed');
+    setSyncBar('error', '✗', `Save failed: ${e.message}`);
+    hideSyncBarSoon(5000);
+  }
+}
+
+// ── ITEMS ──
+function addItem() {
+  const txt = document.getElementById('new-text').value.trim();
+  if (!txt) return;
+  const tag = document.getElementById('new-tag').value;
+  items.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+    text: txt,
+    tag,
+    done: false,
+    created: new Date().toISOString()
+  });
+  document.getElementById('new-text').value = '';
+  render();
+  debounceSave();
+}
+
+function toggleDone(id) {
+  const item = items.find(i => i.id === id);
+  if (item) { item.done = !item.done; render(); debounceSave(); }
+}
+
+function deleteItem(id) {
+  items = items.filter(i => i.id !== id);
+  render();
+  debounceSave();
+}
+
+function debounceSave() {
+  clearTimeout(syncTimer);
+  setSyncBar('saving', '…', 'Pending save…');
+  syncTimer = setTimeout(saveData, 1500);
+}
+
+// ── FILTER ──
+function setFilter(btn, filter) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
+function filteredItems() {
+  if (currentFilter === 'all') return items.filter(i => !i.done);
+  if (currentFilter === 'done') return items.filter(i => i.done);
+  return items.filter(i => i.tag === currentFilter && !i.done);
+}
+
+// ── RENDER ──
+function render() {
+  const container = document.getElementById('items-container');
+  const visible = filteredItems();
+
+  if (visible.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">✦</div><p>Nothing here yet. Add something above.</p></div>`;
+    return;
+  }
+
+  container.innerHTML = visible.map(item => `
+    <div class="item-card ${item.done ? 'done' : ''}">
+      <div class="card-top">
+        <div class="card-check ${item.done ? 'checked' : ''}" onclick="toggleDone('${item.id}')"></div>
+        <div class="card-text">${escHtml(item.text)}</div>
+        <button class="btn-del" onclick="deleteItem('${item.id}')" title="Delete">✕</button>
+      </div>
+      <div class="card-bottom">
+        <span class="tag-badge tag-${item.tag}">${item.tag}</span>
+        <span class="card-meta">${fmtDate(item.created)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── UI HELPERS ──
+function setStatus(state, text) {
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot ' + state;
+  document.getElementById('status-text').textContent = text;
+}
+
+function setSyncBar(cls, icon, msg) {
+  const bar = document.getElementById('sync-bar');
+  bar.className = 'show ' + cls;
+  document.getElementById('sync-icon').innerHTML = icon;
+  document.getElementById('sync-msg').textContent = msg;
+}
+
+function hideSyncBarSoon(ms = 2500) {
+  setTimeout(() => {
+    document.getElementById('sync-bar').classList.remove('show');
+  }, ms);
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// ── INIT ──
+loadConfig();
+if (CFG.user) loadData();
+</script>
+</body>
+</html>
